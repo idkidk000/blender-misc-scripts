@@ -10,18 +10,20 @@ bitrate=50M
 preset=slow
 profile=high
 crf=4
-scale=""
+scale=0
 passes=1
 threads=4
 overwrite=y
 debug=n
 codec=libx264
 audio=""
-loop=""
+loop=1
 audiofadein=0.1
 audiofadeout=1.5
+audiostart=0
+videohold=1
 videofadein=0.1
-videofadeout=0.1
+videofadeout=1
 open=y
 
 while (( "$#" )); do
@@ -44,9 +46,11 @@ while (( "$#" )); do
             echo '-debug (y/n)'
             echo '-audio (file path)'
             echo '-audiofadein / -afadein (seconds) e.g. 0.5'
-            echo '-audiofadeout / -afadeout (seconds) e.g 0.5'
+            echo '-audiofadeout / -afadeout (seconds) e.g. 0.5'
+            echo '-audiostart / -astart (seconds) e.g. 0.5'
             echo '-videofadein / -vfadein (seconds) e.g. 0.5'
-            echo '-videofadeout / -vfadeout (seconds) e.g 0.5'            
+            echo '-videofadeout / -vfadeout (seconds) e.g. 0.5'
+            echo '-videohold /-vhold (seconds) e.g. 0.5'
             echo '-loop (count)'
             echo '-open (y/n)'
             echo '-28'
@@ -106,12 +110,18 @@ while (( "$#" )); do
         -audiofadeout|-afadeout)
             audiofadeout=$2
             ;;
+        -audiostart|-astart)
+            audiostart=$2
+            ;;
         -videofadein|-vfadein)
             videofadein=$2
             ;;
         -videofadeout|-vfadeout)
             videofadeout=$2
-            ;;            
+            ;;
+        -videohold|-vhold)
+            videohold=$2
+            ;;
         -loop)
             loop=$2
             ;;            
@@ -135,6 +145,28 @@ while (( "$#" )); do
     shift
 done
 
+if [ "$videohold"!="0" ]; then
+    #this is awful but i can't get the concat filter to work    
+    mkdir /tmp/ffencode-tmp
+    rm /tmp/ffencode-tmp/*
+    cp $sourcedir/*.$sourceext /tmp/ffencode-tmp/
+    videoholdframes=$(echo "$videohold * $framerate" | bc)
+    framecount=$(ls -l $sourcedir/*.$sourceext | wc -l)
+    totalframecount=$(echo "$framecount + $videoholdframes" | bc)
+    holdframefile=$sourcedir/$(printf "%04d" $framecount).$sourceext
+    
+    if [ ""=%debug="y" ]; then
+        echo "videoholdframes $videoholdframes"
+        echo "framecount $framecount"
+        echo "totalframecount $totalframecount"
+        echo "holdframefile $holdframefile"
+    fi
+    
+    for ((i=$framecount;i<=$totalframecount;i++)); do
+        cp $holdframefile /tmp/ffencode-tmp/$(printf "%04d" $i).$sourceext
+    done
+    sourcedir=/tmp/ffencode-tmp
+fi
 framecount=$(ls -l $sourcedir/*.$sourceext | wc -l)
 duration=$(echo "$framecount / $framerate" | bc)
 
@@ -157,8 +189,10 @@ if [ "$debug"=="y" ]; then
     echo "audio $audio"
     echo "audiofadein $audiofadein"
     echo "audiofadeout $audiofadeout"
+    echo "audiostart $audiostart"
     echo "videofadein $videofadein"
-    echo "videofadeout $videofadeout"    
+    echo "videofadeout $videofadeout"   
+    echo "videohold $videohold"   
     echo "loop $loop"
     echo "framecount $framecount"
     echo "duration duration"    
@@ -177,10 +211,10 @@ case "$filext" in
         ;;
 esac
 
-if [ -z "$scale" ]; then
-    scale_arg=""
-else
+if [ $scale -gt 0 ]; then
     scale_arg="-vf scale=-1:$scale"
+else
+    scale_arg=""
 fi
 
 if [ "$overwrite"=="y" ]; then
@@ -191,7 +225,7 @@ fi
 
 bitrate_arg="-b:v $bitrate"
 
-if [ "$passes"=="1" ]; then
+if [ @$passes==1 ]; then
     crf_arg="-crf $crf"
     passlogfile_arg=""
 else
@@ -202,21 +236,46 @@ fi
 if [ -z "$audio" ]; then
     audio_arg=""
 else
-    audiofadeoutstart=$(echo "$duration - $audiofadeout" | bc)
-    audio_arg="-i $audio -filter_complex afade=t=in:st=0:d=${audiofadein},afade=t=out:st=${audiofadeoutstart}:d=${audiofadeout}"
+    audiofadetotal=$(echo "$audiofadein + $audiofadeout" | bc)
+    if (( $(echo "$audiofadetotal > $duration" | bc -l) )); then
+        echo 'audio fade duration is longer than source'
+        audiofadein=0
+        audiofadeout=0
+    else
+        audiofadeoutstart=$(echo "$duration - $audiofadeout" | bc)
+    fi
+    #convert seconds to timestamps
+    #audiostarttime=$(date -u -d @${audiostart} +"%T.%3N")
+    #audiofadeintime=$(date -u -d @${audiofadein} +"%T.%3N")
+    #audiofadeoutstarttime=$(date -u -d @${audiofadeoutstart} +"%T.%3N")
+    #audiofadeouttime=$(date -u -d @${audiofadeout} +"%T.%3N")
+    #audio_arg="-ss $audiostarttime -i $audio -filter_complex afade=t=in:st=0:d=${audiofadeintime},afade=t=out:st=${audiofadeoutstarttime}:d=${audiofadeouttime}"
+    audio_arg="-ss $audiostart -i $audio -filter_complex afade=t=in:st=0:d=${audiofadein},afade=t=out:st=${audiofadeoutstart}:d=${audiofadeout}"
 fi
 
-if [ "$videofadein"!="0" ] || [ "$videofadeout"!="0" ]; then
-    videofadeoutstart=$(echo "$duration - $videofadeout" | bc)
+if [ @$videofadein!=0 ] || [ @$videofadeout!=0 ] || [ @$videohold!=0 ]; then
+    videofadetotal=$(echo "$videofadein + $videofadeout" | bc)
+    if (( $(echo "$videofadetotal > $duration" | bc -l) )); then
+        echo 'video fade duration is longer than source'
+        videofadein=0
+        videofadeout=0
+    else
+        videofadeoutstart=$(echo "$duration - $videofadeout" | bc)
+    fi
+    #convert seconds to timestamps
+    #videofadeintime=$(date -u -d @${videofadein} +"%T.%3N")
+    #videofadeoutstarttime=$(date -u -d @${videofadeoutstart} +"%T.%3N")
+    #videofadeouttime=$(date -u -d @${videofadeout} +"%T.%3N")
+    #videofilter_arg="-filter_complex fade=t=in:st=0:d=${videofadeintime},fade=t=out:st=${videofadeoutstarttime}:d=${videofadeouttime}"
     videofilter_arg="-filter_complex fade=t=in:st=0:d=${videofadein},fade=t=out:st=${videofadeoutstart}:d=${videofadeout}"
 else
     videofilter_arg=""
 fi
 
-if [ -z "$loop" ]; then
-    loop_arg=""
-else
+if [ $loop -gt 1 ]; then
     loop_arg="-loop $loop"
+else
+    loop_arg=""
 fi
 
 if [ -z "$profile" ]; then
@@ -227,13 +286,13 @@ fi
 
 pushd $sourcedir
 
-for i in $(seq 1 $passes); do
-    if [ "$i"=="$passes" ]; then
+for ((i=1;i<=$passes;i++)); do
+    if [ $i -eq $passes ]; then
         outfile="$filename.$fileext"
     else
         outfile=/dev/null
     fi
-    command="ffmpeg -framerate $framerate -i %04d.$sourceext $videofilter_arg $audio_arg -c:v $codec -preset $preset $profile_arg $scale_arg $bitrate_arg $loop_arg -pix_fmt yuv420p -auto-alt-ref 0 -threads $threads -speed 0 $crf_arg -deadline best -pass $i $passlogfile_arg -shortest $overwrite_arg $outfile"
+    command="ffmpeg -loglevel error -stats -framerate $framerate -i %04d.$sourceext $videofilter_arg $audio_arg -c:v $codec -preset $preset $profile_arg $scale_arg $bitrate_arg $loop_arg -pix_fmt yuv420p -auto-alt-ref 0 -threads $threads -speed 0 $crf_arg -deadline best -pass $i $passlogfile_arg -shortest $overwrite_arg $outfile"
     if [ "$debug"=="y" ]; then
         echo $command
     fi
@@ -241,5 +300,5 @@ for i in $(seq 1 $passes); do
 done
 
 if [ "$open"=="y" ]; then
-    xdg-open "$outfile" &
+    xdg-open "$outfile"
 fi
