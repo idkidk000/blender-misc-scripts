@@ -7,8 +7,8 @@ framerate=30
 filename=render
 fileext=mkv
 bitrate=50M
-preset=slow
-profile=high
+preset=medium
+profile="" #this is a feature profile, not quality
 crf=4
 scale=0
 passes=1
@@ -25,6 +25,8 @@ videohold=1
 videofadein=0.1
 videofadeout=1
 open=y
+streamable=y
+colorspace=yuv444p #420 is the older lower quality standard
 
 while (( "$#" )); do
     case $1 in
@@ -38,12 +40,11 @@ while (( "$#" )); do
             echo '-bitrate'
             echo '-preset (TODO: list)'
             echo '-profile (TODO: list)'
-            echo '-crf (1-64. use -lossless instead of 0)'
+            echo '-crf (1-64. 0 is lossless)'
             echo '-scale (y resolution)'
             echo '-passes (1/2)'
             echo '-threads'
             echo '-overwrite (y/n)'
-            echo '-debug (y/n)'
             echo '-audio (file path)'
             echo '-audiofadein / -afadein (seconds) e.g. 0.5'
             echo '-audiofadeout / -afadeout (seconds) e.g. 0.5'
@@ -52,11 +53,14 @@ while (( "$#" )); do
             echo '-videofadeout / -vfadeout (seconds) e.g. 0.5'
             echo '-videohold /-vhold (seconds) e.g. 0.5'
             echo '-loop (count)'
+            echo '-colorspace / -colourspace / -color / -colour yuv444p or yuv420p'
             echo '-open (y/n)'
             echo '-28'
             echo '-doc'
             echo '-4c'
             echo '-lossless'
+            echo '-nofade'
+            echo '-debug'
             exit 1
             ;;
         -sourcedir)
@@ -98,9 +102,6 @@ while (( "$#" )); do
         -overwrite)
             overwrite=$2
             ;;
-        -debug)
-            debug=$2
-            ;;
         -audio)
             audio=$2
             ;;
@@ -124,7 +125,10 @@ while (( "$#" )); do
             ;;
         -loop)
             loop=$2
-            ;;            
+            ;;     
+        -colorspace|-colourspace|-color|-colour)
+            colorspace=$2
+            ;;
         "-28")
             sourcedir=/tmp/28
             ;;
@@ -136,18 +140,46 @@ while (( "$#" )); do
             bitrate=4M
             crf=10
             passes=2
+            colorspace=yuv420p
             ;;
-        "-lossless")
+        "-youtube")
+            fileext=mkv
             crf=0
             profile=""
+            ;;
+        -lossless)
+            crf=0
+            ;;
+        -nofade)
+            videofadein=0
+            videofadeout=0
+            audiofadein=0
+            audiofadeout=0
+            videohold=0
+            ;;
+        -debug)
+            debug=y
             ;;
     esac
     shift
 done
 
-if [ "$videohold"!="0" ]; then
+if [ $streamable == y ]; then
+    stream_arg="-movflags +faststart"
+else
+    stream_arg=""
+fi
+
+if [ $crf -eq 0 ]; then
+    #not applicable for lossless
+    profile=""
+fi
+
+if [ $videohold -gt 0 ]; then
     #this is awful but i can't get the concat filter to work    
-    mkdir /tmp/ffencode-tmp
+    if [ ! -d /tmp/ffencode-tmp ]; then
+        mkdir /tmp/ffencode-tmp
+    fi
     rm /tmp/ffencode-tmp/*
     cp $sourcedir/*.$sourceext /tmp/ffencode-tmp/
     videoholdframes=$(echo "$videohold * $framerate" | bc)
@@ -155,7 +187,7 @@ if [ "$videohold"!="0" ]; then
     totalframecount=$(echo "$framecount + $videoholdframes" | bc)
     holdframefile=$sourcedir/$(printf "%04d" $framecount).$sourceext
     
-    if [ ""=%debug="y" ]; then
+    if [ "%debug" == "y" ]; then
         echo "videoholdframes $videoholdframes"
         echo "framecount $framecount"
         echo "totalframecount $totalframecount"
@@ -168,9 +200,9 @@ if [ "$videohold"!="0" ]; then
     sourcedir=/tmp/ffencode-tmp
 fi
 framecount=$(ls -l $sourcedir/*.$sourceext | wc -l)
-duration=$(echo "$framecount / $framerate" | bc)
+duration=$(echo "scale=3; $framecount / $framerate" | bc)
 
-if [ "$debug"=="y" ]; then
+if [ "$debug" == "y" ]; then
     echo "sourcedir $sourcedir"
     echo "sourceext $sourceext"
     echo "framerate $framerate"
@@ -195,19 +227,22 @@ if [ "$debug"=="y" ]; then
     echo "videohold $videohold"   
     echo "loop $loop"
     echo "framecount $framecount"
-    echo "duration duration"    
+    echo "duration $duration"    
 fi
 
-case "$filext" in
+case "$fileext" in
     mkv|avi)
         codec=libx264
+        format=h264
         ;;
     mp4)
         codec=mpeg4
+        format=h264
         ;;
     webm)
         codec=libvpx
-        profile_arg=""
+        format=webm
+        profile=""
         ;;
 esac
 
@@ -217,7 +252,7 @@ else
     scale_arg=""
 fi
 
-if [ "$overwrite"=="y" ]; then
+if [ "$overwrite" == "y" ]; then
     overwrite_arg="-y"
 else
     overwrite_arg=""
@@ -225,7 +260,7 @@ fi
 
 bitrate_arg="-b:v $bitrate"
 
-if [ @$passes==1 ]; then
+if [ $passes -eq 1 ]; then
     crf_arg="-crf $crf"
     passlogfile_arg=""
 else
@@ -236,13 +271,13 @@ fi
 if [ -z "$audio" ]; then
     audio_arg=""
 else
-    audiofadetotal=$(echo "$audiofadein + $audiofadeout" | bc)
+    audiofadetotal=$(echo "scale=3; $audiofadein + $audiofadeout" | bc)
     if (( $(echo "$audiofadetotal > $duration" | bc -l) )); then
         echo 'audio fade duration is longer than source'
         audiofadein=0
         audiofadeout=0
     else
-        audiofadeoutstart=$(echo "$duration - $audiofadeout" | bc)
+        audiofadeoutstart=$(echo "scale=3; $duration - $audiofadeout" | bc)
     fi
     #convert seconds to timestamps
     #audiostarttime=$(date -u -d @${audiostart} +"%T.%3N")
@@ -253,27 +288,29 @@ else
     audio_arg="-ss $audiostart -i $audio -filter_complex afade=t=in:st=0:d=${audiofadein},afade=t=out:st=${audiofadeoutstart}:d=${audiofadeout}"
 fi
 
-if [ @$videofadein!=0 ] || [ @$videofadeout!=0 ] || [ @$videohold!=0 ]; then
-    videofadetotal=$(echo "$videofadein + $videofadeout" | bc)
+#bash can't parse floats so just string compare
+if [ "$videofadein" != "0" ] || [ "$videofadeout" != "0" ] || [ "$videohold" != "0" ]; then
+    videofadetotal=$(echo "scale=3; $videofadein + $videofadeout" | bc)
     if (( $(echo "$videofadetotal > $duration" | bc -l) )); then
-        echo 'video fade duration is longer than source'
+        echo 'video fade duration is longer than source and is being ignored'
         videofadein=0
         videofadeout=0
+        videofilter_arg=""
     else
-        videofadeoutstart=$(echo "$duration - $videofadeout" | bc)
+        videofadeoutstart=$(echo "scale=3; $duration - $videofadeout" | bc)
+        #convert seconds to timestamps
+        #videofadeintime=$(date -u -d @${videofadein} +"%T.%3N")
+        #videofadeoutstarttime=$(date -u -d @${videofadeoutstart} +"%T.%3N")
+        #videofadeouttime=$(date -u -d @${videofadeout} +"%T.%3N")
+        #videofilter_arg="-filter_complex fade=t=in:st=0:d=${videofadeintime},fade=t=out:st=${videofadeoutstarttime}:d=${videofadeouttime}"
+        videofilter_arg="-filter_complex fade=t=in:st=0:d=${videofadein},fade=t=out:st=${videofadeoutstart}:d=${videofadeout}"
     fi
-    #convert seconds to timestamps
-    #videofadeintime=$(date -u -d @${videofadein} +"%T.%3N")
-    #videofadeoutstarttime=$(date -u -d @${videofadeoutstart} +"%T.%3N")
-    #videofadeouttime=$(date -u -d @${videofadeout} +"%T.%3N")
-    #videofilter_arg="-filter_complex fade=t=in:st=0:d=${videofadeintime},fade=t=out:st=${videofadeoutstarttime}:d=${videofadeouttime}"
-    videofilter_arg="-filter_complex fade=t=in:st=0:d=${videofadein},fade=t=out:st=${videofadeoutstart}:d=${videofadeout}"
 else
     videofilter_arg=""
 fi
 
 if [ $loop -gt 1 ]; then
-    loop_arg="-loop $loop"
+    loop_arg="-stream_loop $loop"
 else
     loop_arg=""
 fi
@@ -288,17 +325,24 @@ pushd $sourcedir
 
 for ((i=1;i<=$passes;i++)); do
     if [ $i -eq $passes ]; then
+        format_arg=""
         outfile="$filename.$fileext"
     else
+        format_arg="-f $format"
         outfile=/dev/null
     fi
-    command="ffmpeg -loglevel error -stats -framerate $framerate -i %04d.$sourceext $videofilter_arg $audio_arg -c:v $codec -preset $preset $profile_arg $scale_arg $bitrate_arg $loop_arg -pix_fmt yuv420p -auto-alt-ref 0 -threads $threads -speed 0 $crf_arg -deadline best -pass $i $passlogfile_arg -shortest $overwrite_arg $outfile"
-    if [ "$debug"=="y" ]; then
+    command="ffmpeg -loglevel error -stats -framerate $framerate $loop_arg -i %04d.$sourceext $videofilter_arg $audio_arg -c:v $codec -preset $preset $profile_arg $scale_arg $bitrate_arg -pix_fmt $colorspace -auto-alt-ref 0 $stream_arg -threads $threads -speed 0 $crf_arg -deadline best -pass $i $passlogfile_arg -shortest $overwrite_arg $format_arg $outfile"
+    if [ "$debug" == "y" ]; then
         echo $command
     fi
     $command
+    ffmpeg_exit=$?
 done
 
-if [ "$open"=="y" ]; then
-    xdg-open "$outfile"
+if [ $ffmpeg_exit -eq 0 ]; then
+    filesize=$(ls -lh $outfile | cut -f5 -d' ')
+    echo "$filesize written to ${sourcedir}/${outfile}"
+    if [ "$open"=="y" ]; then
+        xdg-open "$outfile"
+    fi
 fi
