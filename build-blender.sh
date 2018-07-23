@@ -65,12 +65,19 @@ for branch in $branches; do
         nice git submodule update --init --recursive
         nice git submodule foreach git checkout master
         nice git submodule foreach git pull --rebase origin master
-        #tries to compile a really old version of llvm instal of just using the current version from the arch repo
-        nice sudo "$buildroot/blender/build_files/build_environment/install_deps.sh" --skip-llvm
+        #tries to compile a really old version of llvm instead of just using the current version from the arch repo
+        if [[ ! `pacman -Q clang` ]]; then
+            sudo pacman -S clang
+        fi
+        sudo nice "$buildroot/blender/build_files/build_environment/install_deps.sh" --skip-llvm
     fi
 
     cd "$buildroot/blender"
     nice make $make_opts
     xdg-open "$buildroot/$out_dir/bin/"
-    "$buildroot/$out_dir/bin/blender" &
+    if [ -f "$buildroot/$out_dir/bin/blender" ]; then
+        "$buildroot/$out_dir/bin/blender" &
+    else
+        echo build of $branch appears to have failed
+    fi
 done
