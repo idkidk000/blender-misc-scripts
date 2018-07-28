@@ -18,14 +18,27 @@ for i in range(0,level):
             for trn_z in range(0,3):
                 if id not in hole_ids:
                     bpy.ops.object.duplicate_move(OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'}, TRANSFORM_OT_translate={"value":(dim_x*trn_x,dim_y*trn_y,dim_z*trn_z)})
-                    cubes.append(bpy.context.active_object)
-                    bpy.context.active_object.select_set('DESELECT')
-                    cube.select_set('SELECT')
+                    
+                    if hasattr(cube, 'select_set'):
+                        #2.8 - new object is active
+                        cubes.append(bpy.context.active_object)
+                        bpy.context.active_object.select_set('DESELECT')
+                        cube.select_set('SELECT')
+                    else:
+                        #2.7 - old object is active
+                        cubes.append(bpy.context.selected_objects[0])
+                        bpy.ops.object.select_all(action='DESELECT')
+                        cube.select=True
                 id+=1
     for cube in cubes:
-        cube.select_set('SELECT')
+        if hasattr(cube, 'select_set'):
+            #2.8
+            cube.select_set('SELECT')
+        else:
+            cube.select=True
     bpy.ops.object.join()
     
 bpy.ops.object.mode_set(mode='EDIT')
 bpy.ops.mesh.remove_doubles()
 bpy.ops.object.mode_set(mode='OBJECT')
+
