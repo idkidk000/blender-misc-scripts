@@ -1,6 +1,6 @@
 bl_info = {
     "name": "Local View",
-    "version": (1, 0),
+    "version": (1, 0, 1),
     "blender": (2, 80, 0),
     "location": "Numpad slash",
     "description": "Local View for Blender 2.8",
@@ -31,7 +31,7 @@ class LocalView(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.active_object is not None
+        return True
 
     def execute(self, context):
         main(context)
