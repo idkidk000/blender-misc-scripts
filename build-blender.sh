@@ -16,6 +16,10 @@ while (( "$#" )); do
     "-reset" )
         reset=y
         ;;
+    "-list" | "-which" | "-builds" )
+        ls -l "$root"
+        exit 0
+        ;;
     "-heads" | "-branches" )
         xdg-open "https://git.blender.org/gitweb/gitweb.cgi/blender.git/heads"
         exit 0
@@ -49,12 +53,16 @@ for branch in $branches; do
     echo branch $branch
 
     buildroot="$root/$branch"
-    echo $buildroot
+    echo build_root $buildroot
 
     if [ ! -z $reset ]; then
+        echo clearing $buildroot
         rm -rf "$buildroot/*"
     fi
+    # exit 1
     if [ -d "$buildroot/blender" ]; then
+        cd "$buildroot"
+        nice git stash
         cd "$buildroot/blender"
         nice make update
     else
@@ -69,7 +77,8 @@ for branch in $branches; do
         if [[ ! `pacman -Q clang` ]]; then
             sudo pacman -S clang
         fi
-        sudo nice "$buildroot/blender/build_files/build_environment/install_deps.sh" --skip-llvm
+        #doesn't like the openvdb in the arch repo
+        sudo nice "$buildroot/blender/build_files/build_environment/install_deps.sh" --skip-llvm --build-openvdb
     fi
 
     cd "$buildroot/blender"
