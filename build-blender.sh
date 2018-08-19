@@ -61,10 +61,12 @@ for branch in $branches; do
     fi
     # exit 1
     if [ -d "$buildroot/blender" ]; then
-        cd "$buildroot"
-        nice git stash
         cd "$buildroot/blender"
+        nice git stash
         nice make update
+        # stash and reapply local changes - https://developer.blender.org/T50961
+        # changed files will need to be added manually - git add path/to/file
+        nice git stash apply
     else
         mkdir -p "$buildroot"
         cd "$buildroot"
