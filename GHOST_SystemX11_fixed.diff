@@ -1,0 +1,11 @@
+--- /home/john/build/blender/blender2.8/blender/intern/ghost/intern/GHOST_SystemX11.cpp	2018-08-25 17:03:39.829510324 +0100
++++ /home/john/build/blender/blender2.8/blender/intern/ghost/intern/GHOST_SystemX11_fixed.cpp	2018-08-25 19:48:44.334101881 +0100
+@@ -2384,7 +2384,7 @@
+ 
+ 
+ 				if ((m_xtablet.StylusDevice == NULL) &&
+-				    (is_stylus(device_info[i].name, device_type) || (device_info[i].type == m_atom.TABLET)))
++				    (is_stylus(device_info[i].name, device_type)) # || (device_info[i].type == m_atom.TABLET)))
+ 				{
+ //					printf("\tfound stylus\n");
+ 					m_xtablet.StylusID = device_info[i].id;
