@@ -7,7 +7,7 @@ index 5d383f68e9d..6dbda952a77 100644
  
  				if ((m_xtablet.StylusDevice == NULL) &&
 -				    (is_stylus(device_info[i].name, device_type) || (device_info[i].type == m_atom.TABLET)))
-+				    (is_stylus(device_info[i].name, device_type)) # || (device_info[i].type == m_atom.TABLET)))
++				    (is_stylus(device_info[i].name, device_type))) # || (device_info[i].type == m_atom.TABLET)))
  				{
  //					printf("\tfound stylus\n");
  					m_xtablet.StylusID = device_info[i].id;
