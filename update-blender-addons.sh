@@ -2,6 +2,7 @@
 
 source_root=~/build/blender-addons
 target_root=~/.config/blender
+python_path=~/build/blender/deps/bin/python-3.6/bin/python3
 
 IFS_orig=$IFS
 IFS='
@@ -20,8 +21,8 @@ for addon_git in `find $source_root -type d -name '.git'`; do
     
     if [ -f "$addon_dir/setup.py" ]; then
         #animation nodes has different params per branch. python's exit code is always 0
-        python "$addon_dir/setup.py" build --noversioncheck
-        python "$addon_dir/setup.py" --noversioncheck --nocopy
+        #python "$addon_dir/setup.py" build --noversioncheck
+        "$python_path" ./setup.py --noversioncheck --nocopy
     fi
     
     #todo - this is pretty bad. should be in a loop increasing maxdepth until found or max
