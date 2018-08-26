@@ -1,6 +1,6 @@
 bl_info = {
     "name": "Local View",
-    "version": (1, 0, 1),
+    "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "Numpad slash",
     "description": "Local View for Blender 2.8",
@@ -8,7 +8,6 @@ bl_info = {
 }
 
 import bpy
-
 
 def main(context):
     hide = not(context.scene.local_view)
@@ -25,7 +24,7 @@ def main(context):
     context.scene.local_view = hide
 
 class LocalView(bpy.types.Operator): 
-    """Tooltip"""
+    """Toggle local view"""
     bl_idname = "object.local_view"
     bl_label = "Local view"
 
@@ -37,27 +36,25 @@ class LocalView(bpy.types.Operator):
         main(context)
         return {'FINISHED'}
 
-
+addon_keymaps = []
 def register():
     bpy.utils.register_class(LocalView)
-    bpy.context.window_manager.keyconfigs.addon.keymaps.new(name='Object Mode').keymap_items.new(LocalView.bl_idname, 'NUMPAD_SLASH', 'PRESS')
-    # Scene variables
+    
+    km = bpy.context.window_manager.keyconfigs.addon.keymaps.new(name='3D View Generic', space_type='VIEW_3D') #(name='Object Mode')
+    kmi = km.keymap_items.new(LocalView.bl_idname, 'NUMPAD_SLASH', 'PRESS')
+    addon_keymaps.append((km,kmi))
+    
     bpy.types.Scene.local_view = bpy.props.BoolProperty(
-            default=False,
-            description="Is local view active?"
-            )
-
+        default=False,
+        description="Is local view active?"
+    )
 
 def unregister():
     bpy.utils.unregister_class(LocalView)
-    for km in bpy.context.window_manager.keyconfigs.addon.keymaps:
-        for kmi in km.keymap_items:
-            km.keymap_items.remove(kmi)
+    
+    for km, kmi in addon_keymaps:
+        km.keymap_items.remove(kmi)
     del bpy.types.Scene.local_view
-
 
 if __name__ == "__main__":
     register()
-
-    # test call
-    bpy.ops.object.local_view()
